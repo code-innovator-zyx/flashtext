@@ -120,6 +120,34 @@ func (kp *KeywordProcessor) walk(sentence string, wf WalkFn) {
 
 	}
 }
+func (kp *KeywordProcessor) walkByte(sentence []byte, wf WalkFn) {
+	// 从根节点开始查找
+	currentNode := kp.root
+	// 遍历文本 sentence 的每个字符，并记录当前字符的索引为 idx，当前字符为 r
+	idx := 0
+	for len(sentence) > 0 {
+		r, l := utf8.DecodeRune(sentence)
+		sentence = sentence[l:]
+		if !kp.caseSensitive {
+			r = unicode.ToLower(r)
+		}
+		// 在循环中 判断是否有当前字符子节点
+		//如果不存在，则说明匹配失败，需要通过失败路径回溯到前一个节点，直到找到一个匹配的子节点或回溯到根节点。
+		for currentNode.children[r] == nil && currentNode.failure != nil {
+			currentNode = currentNode.failure
+		}
+		if currentNode.children[r] == nil {
+			continue
+
+		}
+		currentNode = currentNode.children[r]
+		for length := range currentNode.exist {
+			if !wf(idx-length+1, idx) {
+				return
+			}
+		}
+	}
+}
 
 // ExtractKeywords 匹配关键词
 func (kp *KeywordProcessor) ExtractKeywords(sentence string) []Match {
@@ -133,6 +161,23 @@ func (kp *KeywordProcessor) ExtractKeywords(sentence string) []Match {
 			start: start,
 			end:   end,
 			match: sentence[start : end+1],
+		})
+		return true
+	})
+	return matches
+}
+
+func (kp *KeywordProcessor) ExtractKeywordsFromBytes(sentence []byte) []Match {
+	var matches []Match
+	if len(sentence) == 0 {
+		return matches
+	}
+
+	kp.walkByte(sentence, func(start, end int) bool {
+		matches = append(matches, Match{
+			start: start,
+			end:   end,
+			match: string(sentence[start : end+1]),
 		})
 		return true
 	})
